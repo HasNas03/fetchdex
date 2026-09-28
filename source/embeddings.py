@@ -1,6 +1,6 @@
 from sentence_transformers import SentenceTransformer
-from ingest import load_documents
-from chunk import chunk_documents
+from source.ingest import load_documents
+from source.chunk import chunk_documents
 from sentence_transformers.util import cos_sim
 
 MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"

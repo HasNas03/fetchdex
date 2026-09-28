@@ -1,82 +1,97 @@
-from embeddings import load_embedding_model
-from vector_search import get_collection, search_documents
-from llm import generate_response
+from source.embeddings import load_embedding_model
+from source.vector_search import get_collection, search_documents
+from source.llm import generate_response
 
 
 def build_context(search_results: list[dict]) -> str:
     """
-    Combine retrieved chunks into one block of context
-    for the LLM.
+    Convert retrieved chunks into numbered source blocks
+    that the LLM can cite.
     """
 
     context_parts = []
 
-    for result in search_results:
+    for index, result in enumerate(search_results, start=1):
 
         source = result["metadata"]["source"]
         chunk_number = result["metadata"]["chunk_number"]
         text = result["text"]
 
         context_part = (
-            f"Source: {source}, Chunk: {chunk_number}\n"
-            f"{text}"
+            f"[SOURCE {index}]\n"
+            f"Document: {source}\n"
+            f"Chunk: {chunk_number}\n"
+            f"Content:\n{text}"
         )
 
         context_parts.append(context_part)
 
-    # Separate chunks clearly.
     return "\n\n---\n\n".join(context_parts)
-
 
 def build_prompt(question: str, context: str) -> str:
     """
-    Create a grounded RAG prompt.
+    Build a grounded prompt that requires citations.
     """
 
     return f"""
-You are a personal knowledge assistant.
+        You are a personal knowledge assistant.
 
-Answer the user's question using ONLY the context below.
+        Answer the user's question using ONLY the provided context.
 
-Rules:
-- Do not use outside knowledge.
-- If the answer is not supported by the context, say:
-  "I don't know based on the provided documents."
-- Keep the answer concise.
-- Do not invent facts.
+        Rules:
+        - Do not use outside knowledge.
+        - Do not invent facts.
+        - If the answer is not supported by the context, say:
+        "I don't know based on the provided documents."
+        - Keep the answer concise.
+        - Cite the supporting source using [SOURCE X].
+        - Only cite sources that actually support the claim.
 
-CONTEXT:
-{context}
+        CONTEXT:
+        {context}
 
-QUESTION:
-{question}
+        QUESTION:
+        {question}
 
-ANSWER:
-""".strip()
+        ANSWER:
+        """.strip()
 
+def extract_sources(search_results: list[dict]) -> list[dict]:
+    """
+    Convert retrieval results into clean source metadata
+    for the final response.
+    """
+
+    sources = []
+
+    for index, result in enumerate(search_results, start=1):
+
+        source = {
+            "citation": f"SOURCE {index}",
+            "source": result["metadata"]["source"],
+            "chunk_number": result["metadata"]["chunk_number"],
+            "distance": result["distance"],
+        }
+
+        sources.append(source)
+
+    return sources
 
 def answer_question(
     question: str,
     k: int = 3
 ) -> dict:
     """
-    Full RAG pipeline.
-
-    1. Load embedding model
-    2. Load vector database
-    3. Retrieve relevant chunks
-    4. Build context
-    5. Build prompt
-    6. Ask local LLM
+    Complete RAG pipeline with source tracking.
     """
 
-    # Load our local embedding model.
+    # Load local embedding model.
     model = load_embedding_model()
 
-    # Load existing Chroma collection.
+    # Load Chroma collection.
     collection = get_collection()
 
-    # Retrieve semantically relevant chunks.
+    # Retrieve relevant chunks.
     results = search_documents(
         collection=collection,
         model=model,
@@ -84,26 +99,51 @@ def answer_question(
         k=k
     )
 
-    # Convert retrieved chunks into context.
+    # Build the context given to the LLM.
     context = build_context(results)
 
-    # Build the prompt for the LLM.
+    # Build the grounded prompt.
     prompt = build_prompt(
         question=question,
         context=context
     )
 
-    # Ask local Ollama model.
+    # Generate answer locally.
     answer = generate_response(prompt)
+
+    # Create clean source metadata.
+    sources = extract_sources(results)
 
     return {
         "question": question,
         "answer": answer,
-        "retrieved_chunks": results
+        "sources": sources,
+        "retrieved_chunks": results,
     }
 
-
 if __name__ == "__main__":
+
+    question = (
+        "Which AWS service can migrate databases?"
+    )
+
+    response = answer_question(question)
+
+    print("\nQUESTION:")
+    print(response["question"])
+
+    print("\nANSWER:")
+    print(response["answer"])
+
+    print("\nSOURCES:")
+
+    for source in response["sources"]:
+
+        print(
+            f"- [{source['citation']}] "
+            f"{source['source']} "
+            f"(chunk {source['chunk_number']})"
+        )
 
     question = (
         "Which AWS service can migrate databases?"

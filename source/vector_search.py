@@ -1,8 +1,8 @@
 import chromadb
 
-from ingest import load_documents
-from chunk import chunk_documents
-from embeddings import load_embedding_model, embed_documents
+from source.ingest import load_documents
+from source.chunk import chunk_documents
+from source.embeddings import load_embedding_model, embed_documents
 
 
 # Where Chroma stores its local database.

@@ -1,4 +1,4 @@
-from ingest import load_documents
+from source.ingest import load_documents
 
 def chunk_text(text: str, chunk_size: int = 40, overlap: int = 10) -> list[str]:
     """
